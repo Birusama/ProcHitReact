@@ -64,22 +64,45 @@ struct PHYSICSHITREACT_API FHitReactBoneParams
  * Bone-specific properties for applying hit reactions
  */
 USTRUCT(BlueprintType)
-struct PHYSICSHITREACT_API FHitReactBoneApplyParams : public FHitReactBoneParams
+struct PHYSICSHITREACT_API FHitReactBoneApplyParams
 {
 	GENERATED_BODY()
 
 	FHitReactBoneApplyParams()
-		: LinearImpulseScalar(1.f)
+		: bIncludeSelf(true)
+		, MinBlendWeight(0.f)
+		, MaxBlendWeight(1.f)
+		, bReinitializeExistingPhysics(false)
+		, LinearImpulseScalar(1.f)
 		, MaxLinearImpulse(0.f)
 		, AngularImpulseScalar(1.f)
 		, MaxAngularImpulse(0.f)
 		, RadialImpulseScalar(1.f)
 		, MaxRadialImpulse(0.f)
 		, HoldTime(0.f)
-		, Cooldown(0.15f)
+		, Cooldown(0.1f)
 		, PhysicalAnimProfile(NAME_None)
 		, ConstraintProfile(NAME_None)
 	{}
+
+	/** If false, exclude the bone itself and only simulate bones below it */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics)
+	bool bIncludeSelf;
+
+	/** Minimum weight provided to physical animation (0 is disabled, 1 is full) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics, meta=(UIMin="0", ClampMin="0", UIMax="1", ClampMax="1", EditCondition="!bDisablePhysics"))
+	float MinBlendWeight;
+
+	/** Maximum weight provided to physical animation (0 is disabled, 1 is full) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics, meta=(UIMin="0", ClampMin="0", UIMax="1", ClampMax="1", EditCondition="!bDisablePhysics"))
+	float MaxBlendWeight;
+
+	/**
+	 * If true, will reinitialize physics on this bone from 0, causing a snap
+	 * This provides more reliable/predictable results, but can be visually jarring in some cases
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics)
+	bool bReinitializeExistingPhysics;
 	
 	/**
 	 * Scale the impulse by this amount

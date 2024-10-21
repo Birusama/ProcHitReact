@@ -20,7 +20,7 @@ struct PHYSICSHITREACT_API FHitReactImpulseParamsBase
 	FHitReactImpulseParamsBase()
 		: bApplyImpulse(false)
 		, bFactorMass(false)
-		, Impulse(1000.f)
+		, Impulse(500.f)
 	{}
 	virtual ~FHitReactImpulseParamsBase() = default;
 
@@ -54,10 +54,25 @@ struct PHYSICSHITREACT_API FHitReactLinearImpulseParams : public FHitReactImpuls
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics, meta=(EditCondition="bApplyImpulse"))
 	FVector WorldDirection;
+	
+	/**
+	 * Bone to apply the impulse to
+	 * This differs from the bone that is HitReacted, as the impulse bone is the bone that will receive the impulse
+	 * And the HitReact bone is the bone that will be simulated
+	 *
+	 * If None, the impulse will be applied to the simulated bone instead
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics, meta=(EditCondition="bApplyImpulse"))
+	FName ImpulseBone;
 
 	virtual FVector GetImpulse() const
 	{
 		return WorldDirection * Impulse;
+	}
+
+	const FName& GetBoneNameForImpulse(const FName& SimulatedBoneName) const
+	{
+		return ImpulseBone.IsNone() ? SimulatedBoneName : ImpulseBone;
 	}
 
 	virtual bool CanBeApplied() const override final

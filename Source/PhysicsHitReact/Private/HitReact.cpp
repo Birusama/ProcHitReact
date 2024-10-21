@@ -157,9 +157,11 @@ bool FHitReact::HitReact(USkeletalMeshComponent* InMesh, UPhysicalAnimationCompo
 				Mesh->SetConstraintProfileForAll(CachedBoneParams->ConstraintProfile);
 			}
 		}
-		
-		// // Reinitialize physics state
-		// PhysicsState.Initialize(0.f);
+		else if (CachedBoneParams->bReinitializeExistingPhysics)
+		{
+			// Reinitialize physics state
+			PhysicsState.Initialize(0.f);
+		}
 		
 		// Interp forward
 		InterpDirection = EInterpDirection::Forward;
@@ -182,7 +184,10 @@ bool FHitReact::HitReact(USkeletalMeshComponent* InMesh, UPhysicalAnimationCompo
 			// Apply linear impulse
 			if (!Linear.IsNearlyZero())
 			{
-				Mesh->AddImpulse(Linear, BoneName, LinearParams.IsVelocityChange());
+				// Apply impulse to impulse bone if set, otherwise apply to simulated bone
+				const FName& ImpulseBoneName = LinearParams.GetBoneNameForImpulse(BoneName);
+
+				Mesh->AddImpulse(Linear, ImpulseBoneName, LinearParams.IsVelocityChange());
 			}
 		}
 
@@ -199,13 +204,16 @@ bool FHitReact::HitReact(USkeletalMeshComponent* InMesh, UPhysicalAnimationCompo
 			// Apply Angular impulse
 			if (!Angular.IsNearlyZero())
 			{
+				// Apply impulse to impulse bone if set, otherwise apply to simulated bone
+				const FName& ImpulseBoneName = AngularParams.GetBoneNameForImpulse(BoneName);
+
 				switch (AngularParams.AngularUnits)
 				{
 				case EHitReactUnits::Degrees:
-					Mesh->AddAngularImpulseInDegrees(Angular, BoneName, AngularParams.IsVelocityChange());
+					Mesh->AddAngularImpulseInDegrees(Angular, ImpulseBoneName, AngularParams.IsVelocityChange());
 					break;
 				case EHitReactUnits::Radians:
-					Mesh->AddAngularImpulseInRadians(Angular, BoneName, AngularParams.IsVelocityChange());
+					Mesh->AddAngularImpulseInRadians(Angular, ImpulseBoneName, AngularParams.IsVelocityChange());
 					break;
 				}
 			}
