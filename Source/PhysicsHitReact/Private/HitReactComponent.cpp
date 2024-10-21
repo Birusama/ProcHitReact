@@ -245,6 +245,12 @@ void UHitReactComponent::TickComponent(float DeltaTime, enum ELevelTick TickType
 
 void UHitReactComponent::Activate(bool bReset)
 {
+	if (!GetWorld() || !GetWorld()->IsGameWorld() || !GetOwner())
+	{
+		Super::Activate(bReset);
+		return;
+	}
+	
 	const bool bWasActive = IsActive();
 	
 	// Cache anything we need from the owner
