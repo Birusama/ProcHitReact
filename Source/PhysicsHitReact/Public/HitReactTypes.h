@@ -3,17 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "AlphaInterp.h"
 #include "HitReactTypes.generated.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogHitReact, Log, All);
-
-UENUM(BlueprintType)
-enum class EHitReactUnits : uint8
-{
-	Degrees,
-	Radians
-};
 
 UENUM(BlueprintType)
 enum class EHitReactToggleState : uint8
@@ -41,10 +33,15 @@ struct PHYSICSHITREACT_API FHitReactBoneParams
 	GENERATED_BODY()
 	
 	FHitReactBoneParams(bool bInDisablePhysics = false, float InMinBlendWeight = 0.f, float InMaxBlendWeight = 1.f)
-		: bDisablePhysics(bInDisablePhysics)
+		: bIncludeSelf(true)
+		, bDisablePhysics(bInDisablePhysics)
 		, MinBlendWeight(InMinBlendWeight)
 		, MaxBlendWeight(InMaxBlendWeight)
 	{}
+
+	/** If false, exclude the bone itself and only simulate bones below it */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics)
+	bool bIncludeSelf;
 
 	/**
 	 * If true, disable physics on this bone
@@ -71,11 +68,17 @@ struct PHYSICSHITREACT_API FHitReactBoneApplyParams : public FHitReactBoneParams
 {
 	GENERATED_BODY()
 
-	FHitReactBoneApplyParams(float InImpulseScalar = 1.f, float InMaxImpulse = 0.f, float InMinWaitDelay = 0.15f)
-		: ImpulseScalar(InImpulseScalar)
-		, MaxImpulse(InMaxImpulse)
+	FHitReactBoneApplyParams()
+		: LinearImpulseScalar(1.f)
+		, MaxLinearImpulse(0.f)
+		, AngularImpulseScalar(1.f)
+		, MaxAngularImpulse(0.f)
+		, RadialImpulseScalar(1.f)
+		, MaxRadialImpulse(0.f)
 		, HoldTime(0.f)
-		, Cooldown(InMinWaitDelay)
+		, Cooldown(0.15f)
+		, PhysicalAnimProfile(NAME_None)
+		, ConstraintProfile(NAME_None)
 	{}
 	
 	/**
@@ -83,11 +86,33 @@ struct PHYSICSHITREACT_API FHitReactBoneApplyParams : public FHitReactBoneParams
 	 * @see MaxImpulseTaken will mitigate this value if it would otherwise exceed MaxImpulseTaken
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics, meta=(UIMin="0", ClampMin="0"))
-	float ImpulseScalar;
+	float LinearImpulseScalar;
 
 	/** Maximum impulse that can be applied to this bone (at a single time). 0 to disable. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics, meta=(UIMin="0", ClampMin="0"))
-	float MaxImpulse;
+	float MaxLinearImpulse;
+	
+	/**
+	 * Scale the impulse by this amount
+	 * @see MaxImpulseTaken will mitigate this value if it would otherwise exceed MaxImpulseTaken
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics, meta=(UIMin="0", ClampMin="0"))
+	float AngularImpulseScalar;
+
+	/** Maximum impulse that can be applied to this bone (at a single time). 0 to disable. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics, meta=(UIMin="0", ClampMin="0"))
+	float MaxAngularImpulse;
+
+	/**
+	 * Scale the impulse by this amount
+	 * @see MaxImpulseTaken will mitigate this value if it would otherwise exceed MaxImpulseTaken
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics, meta=(UIMin="0", ClampMin="0"))
+	float RadialImpulseScalar;
+
+	/** Maximum impulse that can be applied to this bone (at a single time). 0 to disable. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics, meta=(UIMin="0", ClampMin="0"))
+	float MaxRadialImpulse;
 
 	/** After fully interpolating in, wait this long before interpolating out */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics, meta=(UIMin="0", ClampMin="0"))
@@ -96,6 +121,12 @@ struct PHYSICSHITREACT_API FHitReactBoneApplyParams : public FHitReactBoneParams
 	/** Delay before applying another impulse to prevent rapid application */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics, meta=(UIMin="0", ClampMin="0"))
 	float Cooldown;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics)
+	FName PhysicalAnimProfile;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics)
+	FName ConstraintProfile;
 };
 
 /**
@@ -123,98 +154,4 @@ struct PHYSICSHITREACT_API FHitReactProfile
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=HitReact)
 	TMap<FName, FHitReactBoneParams> OverrideBoneParams;
-};
-
-/**
- * Process hit reactions on a single bone
- * This is the core system that handles impulse application, physics blend weights, and interpolation
- */
-USTRUCT(BlueprintType)
-struct PHYSICSHITREACT_API FHitReact
-{
-	GENERATED_BODY()
-
-	FHitReact()
-		: BoneName(NAME_None)
-		, InterpDirection(EInterpDirection::Forward)
-		, bCachedBoneExists(false)
-		, bHasCachedBoneExists(false)
-		, Mesh(nullptr)
-		, CachedBoneParams(nullptr)
-		, CachedProfile(nullptr)
-		, LastHitReactTime(-1.f)
-		, HoldTimeRemaining(0.f)
-	{}
-
-	/** Alpha interpolation handler and properties */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Physics)
-	FAlphaInterp PhysicsState;
-
-	/** Bone to simulate physics on */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category=Physics)
-	FName BoneName;
-
-	/**
-	 * Current interpolation direction. First we interpolate in, then back out
-	 */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category=Physics)
-	EInterpDirection InterpDirection;
-
-	/** Cache to avoid redundant bone existence checks */
-	UPROPERTY()
-	bool bCachedBoneExists;
-
-	UPROPERTY()
-	bool bHasCachedBoneExists;
-
-	UPROPERTY()
-	USkeletalMeshComponent* Mesh;
-
-	/** Cached bone params to avoid unnecessary TMap lookups */
-	const FHitReactBoneApplyParams* CachedBoneParams;
-	const FHitReactProfile* CachedProfile;
-
-	/** Last time a hit reaction was applied - prevent rapid application causing poor results */
-	UPROPERTY()
-	float LastHitReactTime;
-
-	UPROPERTY()
-	float HoldTimeRemaining;
-
-	UPROPERTY()
-	TEnumAsByte<ECollisionEnabled::Type> DefaultCollisionEnabled;
-
-	/** @return True if we have valid data to simulate */
-	bool CanSimulate() const;
-
-	/** Cache bone existence to avoid redundant checks */
-	void CacheBoneParams(const FName& BoneName);
-
-	/**
-	 * Apply a hit reaction to the bone
-	 * @param InMesh - Mesh to apply the hit reaction to
-	 * @param InBoneName - Bone to apply the hit reaction to
-	 * @param bOnlyBonesBelow - Exclude the BoneName and only simulate bones below it
-	 * @param Profile - Profile to use when applying the hit react
-	 * @param ApplyParams - Bone-specific application properties to use
-	 * @param Direction - Direction of the hit
-	 * @param Magnitude - Magnitude of the hit
-	 * @param Units - Units to use for the magnitude
-	 * @param bFactorMass - Whether to apply mass to the hit
-	 * @return True if the hit reaction was applied
-	 */
-	bool HitReact(USkeletalMeshComponent* InMesh
-		, const FName& InBoneName
-		, bool bOnlyBonesBelow
-		, const FHitReactProfile* Profile
-		, const FHitReactBoneApplyParams* ApplyParams
-		, const FVector& Direction
-		, const float Magnitude
-		, EHitReactUnits Units
-		, bool bFactorMass = false);
-
-	/** @return True if completed */
-	bool Update(float GlobalScalar, float DeltaTime);
-
-	void SetAllBodiesBelowPhysicsBlendWeight(float PhysicsBlendWeight, bool bSkipCustomPhysicsType = false, bool bIncludeSelf = true) const;
 };

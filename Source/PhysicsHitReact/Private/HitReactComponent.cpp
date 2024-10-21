@@ -3,7 +3,9 @@
 
 #include "HitReactComponent.h"
 
+#include "HitReact.h"
 #include "HitReactTags.h"
+#include "PhysicsEngine/PhysicalAnimationComponent.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(HitReactComponent)
 
@@ -23,6 +25,11 @@ namespace FHitReactCVars
 UHitReactComponent::UHitReactComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = false;
+
+	bAutoActivate = true;
+	
 	Profiles = {
 		{ FHitReactTags::HitReact_Profile_Default, FHitReactProfile() }
 	};
@@ -34,8 +41,8 @@ UHitReactComponent::UHitReactComponent(const FObjectInitializer& ObjectInitializ
 	};
 }
 
-bool UHitReactComponent::HitReact(FGameplayTag ProfileToUse, FName BoneName, bool bOnlyBonesBelow,
-	FVector Direction, const float Magnitude, EHitReactUnits Units, bool bFactorMass)
+bool UHitReactComponent::HitReact(FGameplayTag ProfileToUse, FName BoneName, bool bIncludeSelf,
+	FHitReactImpulseParams ImpulseParams)
 {
 	// Avoid GC issues
 	if (!IsValid(GetOwner()))
@@ -71,20 +78,13 @@ bool UHitReactComponent::HitReact(FGameplayTag ProfileToUse, FName BoneName, boo
 		return false;
 	}
 
-	// Must be bound to a skeletal mesh, or we'll never update
-	if (!PostMeshPoseUpdateHandle.IsValid())
-	{
-		DebugHitReactResult(TEXT("Mesh pose update not bound"), true);
-		return false;
-	}
-
 	// Extended runtime options
 	if (!CanHitReact())
 	{
 		DebugHitReactResult(TEXT("Hit react not allowed"), true);
 		return false;
 	}
-
+	
 	// Get the physics blend for this bone
 	FHitReact& Physics = PhysicsBlends.FindOrAdd(BoneName);
 
@@ -99,7 +99,7 @@ bool UHitReactComponent::HitReact(FGameplayTag ProfileToUse, FName BoneName, boo
 	}
 
 	// Trigger the hit reaction
-	bool bResult = Physics.HitReact(Mesh, BoneName, bOnlyBonesBelow, Profile, Params, Direction, Magnitude, Units, bFactorMass);
+	bool bResult = Physics.HitReact(Mesh, PhysicalAnimation, BoneName, bIncludeSelf, Profile, Params, ImpulseParams);
 	
 	DebugHitReactResult(bResult ? TEXT("Hit react applied") : TEXT("Hit react failed"), !bResult);
 
@@ -159,10 +159,25 @@ void UHitReactComponent::OnMeshPoseInitialized()
 	ResetHitReactSystem();
 }
 
-void UHitReactComponent::PostMeshPoseUpdate()
+void UHitReactComponent::ResetHitReactSystem()
 {
-	const float DeltaTime = GetWorld()->GetDeltaSeconds();
+	if (PhysicsBlends.Num() > 0)
+	{
+		PhysicsBlends.Reset();
 
+		if (Mesh)
+		{
+			Mesh->SetAllBodiesPhysicsBlendWeight(0.f);
+			Mesh->SetAllBodiesSimulatePhysics(false);
+		}
+	}
+}
+
+void UHitReactComponent::TickComponent(float DeltaTime, enum ELevelTick TickType,
+	FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	
 	// Reset the hit react system if we're not allowed to hit react
 	if (!CanHitReact())
 	{
@@ -228,49 +243,47 @@ void UHitReactComponent::PostMeshPoseUpdate()
 	}
 }
 
-void UHitReactComponent::ResetHitReactSystem()
+void UHitReactComponent::Activate(bool bReset)
 {
-	if (PhysicsBlends.Num() > 0)
-	{
-		PhysicsBlends.Reset();
-
-		if (Mesh)
-		{
-			Mesh->SetAllBodiesPhysicsBlendWeight(0.f);
-			Mesh->SetAllBodiesSimulatePhysics(false);
-		}
-	}
-}
-
-void UHitReactComponent::OnRegister()
-{
-	Super::OnRegister();
-
-	if (GetWorld() && GetWorld()->IsGameWorld())
-	{
-		SetupHitReactComponent();
-	}
-}
-
-void UHitReactComponent::InitializeComponent()
-{
-	Super::InitializeComponent();
-
-	SetupHitReactComponent();
-}
-
-void UHitReactComponent::SetupHitReactComponent()
-{
+	const bool bWasActive = IsActive();
+	
 	// Cache anything we need from the owner
-	Mesh = GetMeshFromOwner();
-
-	if (ensureAlways(IsValid(Mesh)))
+	if (Mesh != GetMeshFromOwner() || PhysicalAnimation != GetPhysicalAnimationComponentFromOwner() || bReset)
 	{
-		Mesh->OnAnimInitialized.AddDynamic(this, &ThisClass::OnMeshPoseInitialized);
-		PostMeshPoseUpdateHandle = Mesh->RegisterOnBoneTransformsFinalizedDelegate(
-			FOnBoneTransformsFinalizedMultiCast::FDelegate::CreateUObject(this, &ThisClass::PostMeshPoseUpdate));
+		// Unbind from the old mesh
+		if (PhysicalAnimation && Mesh && PhysicalAnimation->GetSkeletalMesh() == Mesh)
+		{
+			PhysicalAnimation->SetSkeletalMeshComponent(nullptr);
+		}
 
-		GlobalAlphaInterp.Initialize(1.f);
+		// Cache the new mesh and physical animation
+		Mesh = GetMeshFromOwner();
+		PhysicalAnimation = GetPhysicalAnimationComponentFromOwner();
+
+		// Bind to the new mesh
+		PhysicalAnimation->SetSkeletalMeshComponent(Mesh);
+	}
+	
+	if (IsValid(Mesh))
+	{
+		Super::Activate(bReset);
+		if (IsActive() && (!bWasActive || bReset))
+		{
+			// Bind to the mesh's OnAnimInitialized event
+			if (Mesh->OnAnimInitialized.IsAlreadyBound(this, &ThisClass::OnMeshPoseInitialized))
+			{
+				Mesh->OnAnimInitialized.RemoveDynamic(this, &ThisClass::OnMeshPoseInitialized);
+			}
+			Mesh->OnAnimInitialized.AddDynamic(this, &ThisClass::OnMeshPoseInitialized);
+
+			// Initialize the tick function
+			PrimaryComponentTick.GetPrerequisites().Reset();
+			AddTickPrerequisiteComponent(Mesh);
+			PrimaryComponentTick.SetTickFunctionEnable(true);
+
+			// Initialize the global alpha interpolation
+			GlobalAlphaInterp.Initialize(1.f);
+		}
 	}
 	else
 	{
@@ -281,6 +294,20 @@ void UHitReactComponent::SetupHitReactComponent()
 		UE_LOG(LogHitReact, Error, TEXT("%s"), *ErrorString);
 #endif
 	}
+}
+
+UPhysicalAnimationComponent* UHitReactComponent::GetPhysicalAnimationComponentFromOwner_Implementation() const
+{
+	// We don't need to have this component
+	return GetOwner()->GetComponentByClass<UPhysicalAnimationComponent>();
+}
+
+USkeletalMeshComponent* UHitReactComponent::GetMeshFromOwner_Implementation() const
+{
+	// Default implementation, override in subclass or blueprint
+	// By default, get the first found skeletal mesh component
+	// For ACharacter, this is always ACharacter::Mesh, because it overrides FindComponentByClass() to return it
+	return GetOwner()->GetComponentByClass<USkeletalMeshComponent>();
 }
 
 void UHitReactComponent::DebugHitReactResult(const FString& Result, bool bFailed) const
@@ -301,12 +328,4 @@ void UHitReactComponent::DebugHitReactResult(const FString& Result, bool bFailed
 		GEngine->AddOnScreenDebugMessage(-1, 2.4f, DebugColor, FString::Printf(TEXT("HitReact: %s - Application: %s"), *OwnerName, *Result));
 	}
 #endif
-}
-
-USkeletalMeshComponent* UHitReactComponent::GetMeshFromOwner_Implementation() const
-{
-	// Default implementation, override in subclass or blueprint
-	// By default, get the first found skeletal mesh component
-	// For ACharacter, this is always ACharacter::Mesh, because it overrides FindComponentByClass() to return it
-	return GetOwner()->GetComponentByClass<USkeletalMeshComponent>();
 }

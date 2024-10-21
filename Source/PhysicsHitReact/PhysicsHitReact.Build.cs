@@ -22,6 +22,7 @@ public class PhysicsHitReact : ModuleRules
 			{
 				"CoreUObject",
 				"Engine",
+				"PhysicsCore",
 			}
 			);
 	}

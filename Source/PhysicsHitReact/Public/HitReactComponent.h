@@ -3,11 +3,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AlphaInterp.h"
 #include "GameplayTagContainer.h"
+#include "HitReactImpulseParams.h"
 #include "HitReactTypes.h"
 #include "Components/ActorComponent.h"
 #include "HitReactComponent.generated.h"
 
+struct FHitReact;
+class UPhysicalAnimationComponent;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHitReactToggleStateChanged, EHitReactToggleState, NewState);
 
 /**
@@ -40,6 +44,9 @@ protected:
 	UPROPERTY(Transient, DuplicateTransient, BlueprintReadOnly, Category=HitReact)
 	TObjectPtr<USkeletalMeshComponent> Mesh;
 
+	UPROPERTY(Transient, DuplicateTransient, BlueprintReadOnly, Category=HitReact)
+	TObjectPtr<UPhysicalAnimationComponent> PhysicalAnimation;
+
 	/** Global physics interpolation for toggling the system on and off */
 	UPROPERTY(Transient, BlueprintReadOnly, Category=HitReact)
 	FAlphaInterp GlobalAlphaInterp;
@@ -60,15 +67,13 @@ public:
 	 * Trigger a hit reaction on the specified bone
 	 * @param ProfileToUse - Profile to use when applying the hit react
 	 * @param BoneName - Name of the bone to hit react
-	 * @param bOnlyBonesBelow - Exclude the BoneName and only simulate bones below it
-	 * @param Direction - Direction of the hit - e.g. Use the actor's forward vector on the spine, and she will flop forward
-	 * @param Magnitude - Magnitude of the hit
-	 * @param Units - Units to use for the magnitude
-	 * @param bFactorMass - Whether to apply mass to the hit
+	 * @param bIncludeSelf - If false, exclude the BoneName and only simulate bones below it
+	 * @param ImpulseParams - Impulse parameters to use when applying the hit react
 	 * @return True if the hit react was applied
 	 */
 	UFUNCTION(BlueprintCallable, Category=HitReact, meta=(Categories="HitReact.Profile"))
-	bool HitReact(FGameplayTag ProfileToUse, FName BoneName, bool bOnlyBonesBelow, FVector Direction, const float Magnitude, EHitReactUnits Units = EHitReactUnits::Degrees, bool bFactorMass = false);
+	bool HitReact(FGameplayTag ProfileToUse, FName BoneName, bool bIncludeSelf = true,
+		FHitReactImpulseParams ImpulseParams = FHitReactImpulseParams());
 
 	/**
 	 * Toggle the hit react system on or off
@@ -108,28 +113,31 @@ protected:
 	UFUNCTION()
 	virtual void OnMeshPoseInitialized();
 
-	UFUNCTION()
-	virtual void PostMeshPoseUpdate();
-
 	virtual void ResetHitReactSystem();
-	
-	FDelegateHandle PostMeshPoseUpdateHandle;
-	
-protected:
-	virtual void OnRegister() override;
 
 public:
-	virtual void InitializeComponent() override;
+	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-	/** Cache the mesh from the owner */
-	virtual void SetupHitReactComponent();
-
+	virtual void Activate(bool bReset) override;
+	
 	/** Get the mesh to simulate from the owner */
 	UFUNCTION(BlueprintNativeEvent, Category=HitReact)
 	USkeletalMeshComponent* GetMeshFromOwner() const;
 	
 	UFUNCTION(BlueprintPure, Category=HitReact)
 	USkeletalMeshComponent* GetMesh() const { return Mesh; }
+
+	/** Get the PhysicalAnimationComponent from the owner */
+	UFUNCTION(BlueprintNativeEvent, Category=HitReact)
+	UPhysicalAnimationComponent* GetPhysicalAnimationComponentFromOwner() const;
+
+	/**
+	 * Get the PhysicalAnimationComponent
+	 * Can be null if the owner does not have a PhysicalAnimationComponent
+	 * Used to set animation profiles and apply physical animation settings
+	 */
+	UFUNCTION(BlueprintPure, Category=HitReact)
+	UPhysicalAnimationComponent* GetPhysicalAnimationComponent() const { return PhysicalAnimation; }
 	
 private:
 	void DebugHitReactResult(const FString& Result, bool bFailed) const;
