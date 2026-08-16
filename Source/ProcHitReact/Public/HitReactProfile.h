@@ -8,6 +8,8 @@
 #include "System/HitReactVersioning.h"
 #include "HitReactProfile.generated.h"
 
+class UPhysicsAsset;
+
 /**
  * Profiles define how hit reactions are applied to a skeletal mesh
  */
@@ -94,15 +96,24 @@ public:
 	 * Physical animation profile to apply to this bone and any below
 	 * Requires a Physical Animation Component to exist on the owning actor
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=Physics)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=Physics, meta=(GetOptions="GetPhysicalAnimProfileOptions"))
 	FName PhysicalAnimProfile;
 
 	/**
 	 * Constraint profile to apply to all bones
 	 * This is applied to the physics asset on the mesh
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=Physics)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=Physics, meta=(GetOptions="GetConstraintProfileOptions"))
 	FName ConstraintProfile;
+
+#if WITH_EDITORONLY_DATA
+	/**
+	 * Physics asset the profile dropdowns above list their names from -- editor only, unused at runtime
+	 * A profile is usually shared by characters with the same skeleton, so any of their physics assets will do
+	 */
+	UPROPERTY(EditDefaultsOnly, Category=Physics)
+	TSoftObjectPtr<UPhysicsAsset> ProfileSourcePhysicsAsset;
+#endif
 
 	/*
 	* Max LOD that this hit react is allowed to run
@@ -136,5 +147,11 @@ public:
 #else
 	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) override;
 #endif
+
+	UFUNCTION()
+	TArray<FString> GetPhysicalAnimProfileOptions() const;
+
+	UFUNCTION()
+	TArray<FString> GetConstraintProfileOptions() const;
 #endif
 };

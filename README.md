@@ -61,6 +61,8 @@ Supports extendable data-asset profiles, simply specify the profile you want to 
 
 The included HitReact component has many profiles setup for you out of the box with tested defaults.
 
+A profile can optionally name a `PhysicalAnimProfile` and `ConstraintProfile` from the physics asset, applied for the duration of the hit react and cleared afterwards. Assign `ProfileSourcePhysicsAsset` on the profile to pick these from a dropdown; it is editor only and does nothing at runtime.
+
 ### Global Toggle
 You can toggle the entire system on and off, with or without interpolation.
 
@@ -91,6 +93,12 @@ ProcHitReact was designed with multiplayer games in mind.
 See the [debugging section on the Wiki](https://github.com/Vaei/ProcHitReact/wiki/Debugging) to learn how to Debug ProcHitReact.
 
 ## Changelog
+
+### 1.1.0
+* Added asset picker for `PhysicalAnimProfile` and `ConstraintProfile`
+  * _Your existing references probably broke!_
+* Added `BetterPhysicsAsset` to plugin content
+  * UE5.8+ required
 
 ### 1.0.3
 * Fix float as double

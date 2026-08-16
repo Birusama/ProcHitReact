@@ -4,6 +4,7 @@
 #include "HitReactProfile.h"
 
 #include "Misc/DataValidation.h"
+#include "PhysicsEngine/PhysicsAsset.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(HitReactProfile)
 
@@ -36,6 +37,36 @@ EDataValidationResult UHitReactProfile::IsDataValid(class FDataValidationContext
 	}
 
 	return Super::IsDataValid(Context);
+}
+
+TArray<FString> UHitReactProfile::GetPhysicalAnimProfileOptions() const
+{
+	TArray<FString> Options { TEXT("None") };
+
+	if (const UPhysicsAsset* PhysAsset = ProfileSourcePhysicsAsset.LoadSynchronous())
+	{
+		for (const FName& ProfileName : PhysAsset->GetPhysicalAnimationProfileNames())
+		{
+			Options.Add(ProfileName.ToString());
+		}
+	}
+
+	return Options;
+}
+
+TArray<FString> UHitReactProfile::GetConstraintProfileOptions() const
+{
+	TArray<FString> Options { TEXT("None") };
+
+	if (const UPhysicsAsset* PhysAsset = ProfileSourcePhysicsAsset.LoadSynchronous())
+	{
+		for (const FName& ProfileName : PhysAsset->GetConstraintProfileNames())
+		{
+			Options.Add(ProfileName.ToString());
+		}
+	}
+
+	return Options;
 }
 #endif
 
